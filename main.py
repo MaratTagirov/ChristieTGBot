@@ -8,7 +8,10 @@ from typing import Any
 import dotenv
 import requests
 from aiogram import Bot, Dispatcher, F
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import default_state, State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import Message
 from requests import Response
 
@@ -162,10 +165,8 @@ async def get_note(message: Message):
     con.close()
 
 
-def get_word() -> dict[str, str | list]:
-    words: list[str] = ["президент", "инквизиция", "проституция", "расстрел",
-                        "дифференцирование", "хайлайтер", "лоферы", "повербанк",
-                        "куколд", "микроконтроллер", "доксинг", "константа"]
+async def get_word() -> dict[str, str | list]:
+    words: list[str] = ["яблоко", "малина", "апельсин", "мандарин", "груша"]
     _word: str = random.choice(words)
     word_letters = {key: [] for key in sorted(list(set(_word)))}
     word_placeholder: list[str] = list("_" * len(_word))
@@ -177,72 +178,75 @@ def get_word() -> dict[str, str | list]:
     return {"word": _word, "word_letters": word_letters, "word_placeholder": list(word_placeholder)}
 
 
-async def cancel_game(message: Message):
-    global game
-    if game["in_game"]:
-        game["in_game"] = False
-        await message.answer("Вы вышли из игры.")
-
-word = get_word()
+storage = MemoryStorage()
 
 
-async def play_hanged_man(message: Message):
-    global word
-    global game
-    if not game["in_game"]:
-        game["in_game"] = True
-        word = get_word()
-        await message.answer(r"Вы начали игру виселица. Для того чтобы прекратить игру введите команду  /cancel")
-    else:
-        await message.answer(r"Игра уже начата. Завершите предыдущую игру, закончив раунд, либо введя комануд /cancel")
+class Game(StatesGroup):
 
-game = {"random_word": word["word"], "word_letters": word["word_letters"],
-        "word_placeholder": word["word_placeholder"], "attempts": 5}
-user = {"in_game": False, "total_games": 0, "wins": 0}
-
-word = get_word()
+    word: str = " "
+    word_letters: str = " "
+    word_placeholder: list[str] = [" "]
+    atempts: int = 5
+    user_input = State()
 
 
-async def catch_answer(message: Message):
-    global game
-    global user
+async def play_hanged_man(message: Message, state: FSMContext):
+    await message.answer(r"Вы начали игру виселица. Для того чтобы прекратить игру введите команду  /cancel")
+    _word = await get_word()
+    Game.word = _word["word"]
+    Game.word_letters = _word["word_letters"]
+    Game.word_placeholder = _word["word_placeholder"]
+    Game.atempts = 5
+
+    await state.set_state(Game.user_input)
+
+
+async def cancel_game(message: Message, state: FSMContext):
+    await message.answer(r"Вы вышли из игры. Чтобы начать новую игру введите команду /playhanged")
+    await state.clear()
+
+
+async def catch_answer(message: Message, state: FSMContext):
     letter: str = message.text
 
-    if ''.join(game["word_placeholder"]) == game["random_word"]:
-        await message.answer("Вы победили!")
-    if game["attempts"] <= 0:
-        await message.answer("Вы проиграли(((")
-    if letter in game["random_word"]:
-        for i in game["word_letters"][letter]:
-            game["word_placeholder"][i] = letter
-            await message.answer(''.join(game["word_placeholder"]))
+    if letter in Game.word:
+        for i in Game.word_letters[letter]:
+            Game.word_placeholder[i] = letter
+            await message.answer(''.join(Game.word_placeholder))
     else:
-        await message.answer(''.join(["word_placeholder"]))
-        game["attempts"] -= 1
+        await message.answer(''.join(Game.word_placeholder))
+        Game.atempts -= 1
+
+    win_condition = "".join(Game.word_placeholder) == Game.word
+
+    if win_condition:
+        await message.answer("Вы победили!")
+        await state.clear()
+
+    if Game.atempts <= 0:
+        await message.answer("Вы проиграли(((")
+        await state.clear()
+
+    await state.set_state(Game.user_input)
 
 
 def main():
     BOT_TOKEN: str = os.getenv("BOT_TOKEN")
     bot: "Bot" = Bot(token=BOT_TOKEN)
-    dp: "Dispatcher" = Dispatcher()
+    dp: "Dispatcher" = Dispatcher(storage=storage)
 
     dp.message.register(start_bot, Command(commands=["help", "start"]))
-
     dp.message.register(send_joke, Command(commands=["anec"]))
-
     dp.message.register(make_interaction_with_user, Command(commands=["hug", "kiss", "slap"]))
-
     dp.message.register(send_cat, Command(commands=["cat"]))
-
     dp.message.register(drink_tea, Command(commands=["tea"]))
-
     dp.message.register(add_note, Command(commands=["addnote"]))
     dp.message.register(del_note, Command(commands=["delnote"]))
     dp.message.register(get_note, F.text.startswith('#'))
 
-    # dp.message.register(cancel_game, Command(commands=["cancel"]))
-    # dp.message.register(play_hanged_man, Command(commands=["playhanged"]))
-    # dp.message.register(catch_answer, F.is_alplha() & F.len() == 1)
+    dp.message.register(play_hanged_man, Command(commands=["playhanged"]))
+    dp.message.register(cancel_game, Command(commands=["cancel"]), ~StateFilter(default_state))
+    dp.message.register(catch_answer, ~StateFilter(default_state))
 
     dp.run_polling(bot)
 

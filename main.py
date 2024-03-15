@@ -1,12 +1,10 @@
 import json
-import os
 import random
 import re
 import sqlite3
 from dataclasses import dataclass
 from typing import Any
 
-import dotenv
 import requests
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, StateFilter
@@ -16,9 +14,11 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import Message
 from requests import Response
 
+from config_data.config import load_config
 from lexicon.lexicon_ru import LEXICON_RU
 
-dotenv.load_dotenv(dotenv.find_dotenv())
+
+config = load_config()
 
 
 async def start_bot(message: Message) -> None:
@@ -26,19 +26,19 @@ async def start_bot(message: Message) -> None:
 
 
 async def send_joke(message: Message) -> None:
-    JOKES_API: str = os.getenv("JOKES_API")
+    JOKES_API: str = config.apis.jokes_api
     r: "Response" = requests.get(JOKES_API)
 
     if r.status_code != 200:
-        await message.answer("Анекдота сегодня не будет")
+        await message.answer(LEXICON_RU["send_joke_bad_request"])
         return
     joke: str = r.content.decode('cp1251')[12:-2]
     await message.answer(joke)
 
 
 async def make_interaction_with_user(message: Message) -> None:
-    BOT_USERNAME: str = os.getenv("BOT_USERNAME")
-    TENOR_API: str = os.getenv("TENOR")
+    BOT_USERNAME: str = config.tg_bot.bot_username
+    TENOR_API: str = config.apis.tenor
     lmt: int = 20
 
     checks_1: str = "((/hug)|(/kiss)|(/slap)) (@[A-z]([A-z0-9_]{4,31}))"
@@ -77,7 +77,7 @@ async def make_interaction_with_user(message: Message) -> None:
 
 
 async def send_cat(message: Message) -> None:
-    CATS_API: str = os.getenv("CATS_API")
+    CATS_API: str = config.apis.cats_api
     cat_response: "Response" = requests.get(CATS_API)
     if cat_response.status_code != 200:
         await message.answer(LEXICON_RU["send_cat_bad_request"])
@@ -92,7 +92,7 @@ async def drink_tea(message: Message) -> None:
 
 
 async def add_note(message: Message) -> None:
-    con = sqlite3.connect(database="database.db")
+    con = sqlite3.connect(database=config.database.database_name)
     cur = con.cursor()
 
     cur.execute('''CREATE TABLE IF NOT EXISTS notes
@@ -126,11 +126,11 @@ note_content varchar(50)
         con.close()
 
     else:
-        await message.answer("Оишбка!((((")
+        await message.answer(LEXICON_RU["add_note_invalid_input"])
 
 
 async def del_note(message: Message) -> None:
-    con = sqlite3.connect(database="database.db")
+    con = sqlite3.connect(database=config.database.database_name)
     cur = con.cursor()
 
     message_content: list[str] = message.text.split()
@@ -143,7 +143,7 @@ async def del_note(message: Message) -> None:
 
 
 async def get_note(message: Message) -> None:
-    con = sqlite3.connect(database="database.db")
+    con = sqlite3.connect(database=config.database.database_name)
     cur = con.cursor()
     query = cur.execute(f"SELECT note_header, note_content FROM notes WHERE note_header = '{message.text}' ")
     result: list = list(query.fetchall())
@@ -221,7 +221,7 @@ async def catch_answer(message: Message, state: FSMContext) -> None:
 
 
 def main() -> None:
-    BOT_TOKEN: str = os.getenv("BOT_TOKEN")
+    BOT_TOKEN: str = config.tg_bot.token
     bot: "Bot" = Bot(token=BOT_TOKEN)
     dp: "Dispatcher" = Dispatcher(storage=storage)
 

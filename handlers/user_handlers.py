@@ -1,27 +1,26 @@
 import json
 import random
 import re
-from typing import Any
 import sqlite3
+from dataclasses import dataclass
+from typing import Any
+
 import requests
-from aiogram import Router
+from aiogram import Bot, Router, F
 from aiogram.filters import Command, StateFilter
-from aiogram.types import Message
-from requests import Response
-from dataclasses import  dataclass
-from config_data.config import load_config
-from lexicon.lexicon_ru import LEXICON_RU
-from aiogram.methods import edit_message_text
-from aiogram import F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import default_state, State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram import Bot, Dispatcher
-bot = Bot(token="6867175108:AAH7WGKjb5BnlFOL0ZPXd_guk5QX4v2lrSg")
+from aiogram.types import Message
+from requests import Response
+
+from config_data.config import load_config
+from lexicon.lexicon_ru import LEXICON_RU
 
 config = load_config()
 router = Router()
 storage = MemoryStorage()
+bot = Bot(config.tg_bot.token)
 
 
 @router.message(Command(commands=["start", "help"]))
@@ -167,7 +166,7 @@ async def get_note(message: Message) -> None:
 
 
 async def get_word() -> dict[str, str | list]:
-    words: list[str] = ["яблоко", "малина", "апельсин", "мандарин", "груша", "виноград", "манго"]
+    words: list[str] = ["яблоко", "малина", "ананас", "груша"]
     _word: str = random.choice(words)
     word_letters: dict[str, list[int]] = {key: [] for key in sorted(list(set(_word)))}
     word_placeholder: list[str] = list("_" * len(_word))
@@ -179,29 +178,26 @@ async def get_word() -> dict[str, str | list]:
     return {"word": _word, "word_letters": word_letters, "word_placeholder": list(word_placeholder)}
 
 
-
-
-
 @dataclass
 class Game(StatesGroup):
     word: str
     word_letters: str
     word_placeholder: list[str]
-    id: int
-    chat_id: int
+    msg_id: int = 0
     attempts: int = 5
     user_input: "State" = State()
 
 
 @router.message(Command(commands=["playhanged"]))
 async def play_hanged_man(message: Message, state: FSMContext) -> None:
-    await message.answer(LEXICON_RU["hanged_start_msg"])
     _word: dict[str, str | list] = await get_word()
     Game.word = _word["word"]
     Game.word_letters = _word["word_letters"]
     Game.word_placeholder = _word["word_placeholder"]
-    Game.id = message.message_id
-    Game.chat_id = message.chat.id
+    if Game.msg_id == 0:
+        Game.msg_id = message.message_id + 2
+    await message.answer(f"{LEXICON_RU["hanged_start_msg"]}")
+    await message.answer(f"{''.join(Game.word_placeholder)}")
     await state.set_state(Game.user_input)
 
 
@@ -217,23 +213,24 @@ async def catch_answer(message: Message, state: FSMContext) -> None:
     if letter in Game.word:
         for i in Game.word_letters[letter]:
             Game.word_placeholder[i] = letter
-        await message.answer(''.join(Game.word_placeholder))
+        word = ''.join(Game.word_placeholder)
+        await bot.edit_message_text(chat_id=message.chat.id, message_id=Game.msg_id, text=word)
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
     else:
-        await message.answer(''.join(Game.word_placeholder))
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
         Game.attempts -= 1
 
     win_condition = "".join(Game.word_placeholder) == Game.word
 
     if win_condition:
         await message.answer(LEXICON_RU["hanged_win_msg"])
+        Game.msg_id = 0
         await state.clear()
         return
 
     if Game.attempts <= 0:
         await message.answer(LEXICON_RU["hanged_lose_msg"])
+        Game.msg_id = 0
         await state.clear()
         return
     await state.set_state(Game.user_input)
-
-
-

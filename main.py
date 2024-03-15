@@ -11,7 +11,9 @@ config = load_config()
 async def main() -> None:
     BOT_TOKEN: str = config.tg_bot.token
     bot: "Bot" = Bot(token=BOT_TOKEN)
+
     dp: "Dispatcher" = Dispatcher()
+
     dp.include_router(user_handlers.router)
 
     await bot.delete_webhook(drop_pending_updates=True)

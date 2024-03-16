@@ -11,7 +11,8 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import default_state, State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import Message
+from aiogram.types import InlineKeyboardButton, Message
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from requests import Response
 
 from config_data.config import load_config
@@ -234,3 +235,22 @@ async def catch_answer(message: Message, state: FSMContext) -> None:
         await state.clear()
         return
     await state.set_state(Game.user_input)
+
+
+kb_builder = InlineKeyboardBuilder()
+coords = [(0, 0,), (0, 1,), (0, 2,),
+          (1, 0,), (1, 1,), (1, 2,),
+          (2, 0,), (2, 1,), (2, 2),
+          ]
+
+buttons: list[InlineKeyboardButton] = [
+    InlineKeyboardButton(text=f"{coord}", callback_data="1") for coord in coords
+]
+
+kb_builder.row(*buttons, width=3)
+
+
+@router.message(Command(commands=["playxo"]))
+async def play_xo(message: Message) -> None:
+    await message.answer(text="Зацени эти классные инлайн кнопки, бро!",
+                         reply_markup=kb_builder.as_markup())

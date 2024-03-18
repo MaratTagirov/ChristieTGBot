@@ -32,6 +32,8 @@ class Config:
 
 
 def load_config(path: str | None = None) -> Config:
+    """Loads config data: TOKENS, API KEYS from your env variable"""
+
     return Config(
         tg_bot=TgBot(
             token=os.getenv("BOT_TOKEN"),

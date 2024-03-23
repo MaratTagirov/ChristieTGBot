@@ -32,7 +32,7 @@ async def get_word() -> dict[str, str | list]:
 
 
 @dataclass
-class Game(StatesGroup):
+class HangmanGame(StatesGroup):
     word: str
     word_letters: str
     word_placeholder: list[str]
@@ -44,15 +44,17 @@ class Game(StatesGroup):
 @router.message(Command(commands=["playhanged"]))
 async def play_hanged_man(message: Message, state: FSMContext) -> None:
     _word: dict[str, str | list] = await get_word()
-    Game.word = _word["word"]
-    Game.word_letters = _word["word_letters"]
-    Game.word_placeholder = _word["word_placeholder"]
+    HangmanGame.word = _word["word"]
+    HangmanGame.word_letters = _word["word_letters"]
+    HangmanGame.word_placeholder = _word["word_placeholder"]
     BOT_MESSAGE_DIFFERENCE: int = 2
-    if Game.msg_id == 0:
-        Game.msg_id = message.message_id + BOT_MESSAGE_DIFFERENCE
+
+    if HangmanGame.msg_id == 0:
+        HangmanGame.msg_id = message.message_id + BOT_MESSAGE_DIFFERENCE
+
     await message.answer(f"{LEXICON_RU["hanged_start_msg"]}")
-    await message.answer(f"{''.join(Game.word_placeholder)}")
-    await state.set_state(Game.user_input)
+    await message.answer(f"{''.join(HangmanGame.word_placeholder)}")
+    await state.set_state(HangmanGame.user_input)
 
 
 @router.message(Command(commands=["exithanged"]), ~StateFilter(default_state))
@@ -65,27 +67,28 @@ async def cancel_game(message: Message, state: FSMContext) -> None:
 async def catch_answer(message: Message, state: FSMContext) -> None:
     letter: str = message.text
 
-    if letter in Game.word:
-        for i in Game.word_letters[letter]:
-            Game.word_placeholder[i] = letter
-        word = ''.join(Game.word_placeholder)
-        await bot.edit_message_text(chat_id=message.chat.id, message_id=Game.msg_id, text=word)
+    if letter in HangmanGame.word:
+        for i in HangmanGame.word_letters[letter]:
+            HangmanGame.word_placeholder[i] = letter
+        word = ''.join(HangmanGame.word_placeholder)
+        await bot.edit_message_text(chat_id=message.chat.id, message_id=HangmanGame.msg_id, text=word)
         await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
     else:
-        Game.attempts -= 1
+        HangmanGame.attempts -= 1
         await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
 
-    win_condition = "".join(Game.word_placeholder) == Game.word
+    win_condition = "".join(HangmanGame.word_placeholder) == HangmanGame.word
 
     if win_condition:
         await message.answer(LEXICON_RU["hanged_win_msg"])
-        Game.msg_id = 0
+        HangmanGame.msg_id = 0
         await state.clear()
         return
 
-    if Game.attempts <= 0:
+    if HangmanGame.attempts <= 0:
         await message.answer(LEXICON_RU["hanged_lose_msg"])
-        Game.msg_id = 0
+        HangmanGame.msg_id = 0
         await state.clear()
         return
-    await state.set_state(Game.user_input)
+
+    await state.set_state(HangmanGame.user_input)

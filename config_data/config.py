@@ -31,8 +31,8 @@ class Config:
     apis: APIs
 
 
-def load_config(path: str | None = None) -> Config:
-    """Loads config data: TOKENS, API KEYS from your env variable"""
+def load_config() -> Config:
+    """Loads config data: TOKENS, API KEYS from  env variable"""
 
     return Config(
         tg_bot=TgBot(

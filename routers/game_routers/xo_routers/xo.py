@@ -1,20 +1,14 @@
-from dataclasses import dataclass
-
 from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.fsm.state import StatesGroup
+from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import InlineKeyboardButton, Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from lexicon.lexicon_ru import LEXICON_RU
+
 storage = MemoryStorage()
 router = Router()
-
-
-def generate_board(_size=3):
-    _board = [['_'] * _size for _ in range(_size)]
-
-    return _board
 
 
 def scan_row(_row, symbol, scan_window_size=3):
@@ -68,54 +62,119 @@ def check_winner(board, scan_window_size, turn):
         if main_diagonal_check or secondary_diagonal_check:
             win = True
 
-
     return win
 
 
-size = 5
-board = generate_board(5)
-turn = "X"
+class Board:
+    def __init__(self, size):
+        self.board = self.generate_board(size)
 
-buttons: list[InlineKeyboardButton] = []
+    def __len__(self):
+        return len(self.board)
 
-for i in range(size):
-    for j in range(size):
-        buttons.extend([InlineKeyboardButton(text=f"_", callback_data=f"{i}{j}")])
+    def __iter__(self):
+        return iter(self.board)
+
+    def __getitem__(self, item):
+        return self.board[item]
+
+    def __setitem__(self, key, value):
+        self.board[key] = value
+
+    def __contains__(self, item):
+        return item in self.board
+
+    @staticmethod
+    def generate_board(_size=3):
+        _board = [['_'] * _size for _ in range(_size)]
+        return _board
+
+
+class XOGame(StatesGroup):
+    def __init__(self, board, win_row_size, state, turn, active=True):
+        self.xo_board = board
+        self.win_row_size = win_row_size
+        self.turn = turn
+        self.active = active
+
+        self.state = state
+
+    def switch_turn(self):
+        if self.turn == 'X':
+            self.turn = 'O'
+        else:
+            self.turn = 'X'
+
+
+class XOKeyboard:
+    def __init__(self, placeholder, size):
+        self.placeholder = placeholder
+        self.size = size
+        self.keyboard = self.construct_keyboard(self.size)
+
+    def __iter__(self):
+        return iter(self.keyboard)
+
+    def __getitem__(self, item):
+        return self.keyboard[item]
+
+    def __setitem__(self, key, value):
+        self.keyboard[key] = value
+
+    def construct_keyboard(self, size):
+        _keyboard = []
+        for i in range(size):
+            for j in range(size):
+                _keyboard.extend([InlineKeyboardButton(text=self.placeholder, callback_data=f"{i}{j}")])
+        return _keyboard
+
+
+game = XOGame(board=Board(5), win_row_size=4, state=State(), turn="X")
+
+buttons = XOKeyboard(placeholder='_', size=5)
 
 kb_builder = InlineKeyboardBuilder()
-kb = kb_builder.row(*buttons, width=size)
+kb = kb_builder.row(*buttons, width=len(game.xo_board))
 
 
 @router.message(Command(commands="playxo"))
 async def play_xo(message: Message):
-    await message.answer("Вы начали игру в крестики-нолики", reply_markup=kb_builder.as_markup())
-
-
-@router.callback_query(F.data.in_([f"{i}{j}" for i in range(size) for j in range(size)]))
-async def process_move(callback: CallbackQuery):
-    global kb_builder, buttons, turn, board, size
-
-    win_x = check_winner(board=board, scan_window_size=4, turn="X")
-    win_o = check_winner(board=board, scan_window_size=4, turn="O")
-
-    if win_x:
-        await callback.message.answer("Победил крестик!")
-        buttons = generate_board(5)
-    if win_o:
-        await callback.message.answer("Победил нолик!")
-        buttons = generate_board(5)
-
-    if turn == 'X':
-        buttons[int(callback.data, base=size)] = InlineKeyboardButton(text="X", callback_data=callback.data)
-        board[int(callback.data[0])][int(callback.data[1])] = 'X'
-        turn = 'O'
-    else:
-        buttons[int(callback.data, base=size)] = InlineKeyboardButton(text="O", callback_data=callback.data)
-        board[int(callback.data[0])][int(callback.data[1])] = 'O'
-        turn = 'X'
-
+    global kb_builder, buttons
+    await message.answer(LEXICON_RU["xo"]["xo_start_msg"], reply_markup=kb_builder.as_markup())
     kb_builder = InlineKeyboardBuilder()
-    kb_builder.row(*buttons, width=size)
-    print(*board, sep='\n')
+    buttons = XOKeyboard('_', 5)
+    kb = kb_builder.row(*buttons, width=len(game.xo_board))
+    game.active = True
 
-    await callback.message.edit_text(text=f"Вы отметили поле {callback.data}", reply_markup=kb_builder.as_markup())
+@router.callback_query(F.data.in_([f"{i}{j}" for i in range(len(game.xo_board)) for j in range(len(game.xo_board))]))
+async def process_move(callback: CallbackQuery):
+    global kb_builder, buttons
+
+    win_x = check_winner(board=game.xo_board, scan_window_size=game.win_row_size, turn="X")
+    win_o = check_winner(board=game.xo_board, scan_window_size=game.win_row_size, turn="O")
+
+    if game.turn == 'X':
+        buttons[int(callback.data, base=len(game.xo_board))] = InlineKeyboardButton(text="X",
+                                                                                    callback_data=callback.data)
+        game.xo_board[int(callback.data[0])][int(callback.data[1])] = game.turn
+    else:
+        buttons[int(callback.data, base=len(game.xo_board))] = InlineKeyboardButton(text="O",
+                                                                                    callback_data=callback.data)
+        game.xo_board[int(callback.data[0])][int(callback.data[1])] = game.turn
+    kb_builder = InlineKeyboardBuilder()
+    kb_builder.row(*buttons, width=len(game.xo_board))
+
+    game.switch_turn()
+
+    if not (win_x or win_o) and game.active:
+        await callback.message.edit_text(text=f"Ход {game.turn}", reply_markup=kb_builder.as_markup())
+
+    if win_x or win_o:
+        await callback.answer("Игра окончена!")
+        await callback.message.edit_text(text=f"{LEXICON_RU["xo"][game.turn]}",
+                                         reply_markup=kb_builder.as_markup())
+        game.active = False
+        kb_builder = InlineKeyboardBuilder()
+        buttons = XOKeyboard('_', 5)
+
+        game.xo_board = Board(5)

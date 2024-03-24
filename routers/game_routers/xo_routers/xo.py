@@ -51,11 +51,11 @@ class XOGame(StatesGroup):
 
         self.state = state
 
-    def restart_game(self):
-        self.xo_board = Board(self.xo_board.size)
+    def set_game(self, size, win_row_size):
+        self.xo_board = Board(size)
+        self.win_row_size = win_row_size
         self.turn = 'X'
         self.active = True
-        self.players = {'X': '_', 'O': '_'}
 
     def switch_turn(self):
         if self.turn == 'X':
@@ -122,7 +122,7 @@ class XOGame(StatesGroup):
 
 
 class XOKeyboard:
-    def __init__(self, placeholder, size):
+    def __init__(self, size, placeholder='_'):
         self.placeholder = placeholder
         self.size = size
         self.keyboard = self.construct_keyboard(self.size)
@@ -151,9 +151,12 @@ xo_keyboard = XOKeyboard(placeholder='_', size=5)
 
 @router.message(Command(commands="playxo"))
 async def play_xo(message: Message):
-    kb_builder = InlineKeyboardBuilder()
-    xo_keyboard.keyboard = xo_keyboard.construct_keyboard(xo_keyboard.size)
-    kb_builder.row(*xo_keyboard, width=len(game.xo_board))
+    keyboard = [InlineKeyboardButton(text="3", callback_data="3"),
+                InlineKeyboardButton(text="5", callback_data="5"), ]
+
+    kb_1 = InlineKeyboardBuilder()
+
+    kb_1.row(*keyboard, width=3)
 
     BOT_USERNAME: str = config.tg_bot.bot_username
 
@@ -167,20 +170,34 @@ async def play_xo(message: Message):
     recipient: str = message_content[-1][1:]
 
     if is_valid_command_1 or is_valid_command_2:
-        game.restart_game()
         game.players['X'] = message.from_user.username
         game.players['O'] = recipient
 
         await message.answer(LEXICON_RU["xo"]["xo_start_msg"])
-        await message.answer(text=f"{LEXICON_RU["xo"][game.turn]["win_higlight_symbol"]}  @{game.players[game.turn]}",
-                             reply_markup=kb_builder.as_markup())
+        await message.answer(text="Выберите размер поля:", reply_markup=kb_1.as_markup())
+
     else:
         await message.answer(f'Для начала игры введите команду /playxo @[ник вашего соперника]')
 
 
-@router.callback_query(F.data.in_["3", "5", "10"])
-async def choose_field_size(callback: CallbackQuery):
-    ...
+@router.callback_query(F.data.in_(["3", "5"]))
+async def set_field_size(callback: CallbackQuery):
+    global xo_keyboard
+    field_size = int(callback.data)
+    win_row_sizes = {3: 3, 5: 4}
+    await callback.message.answer(
+        f"Вы выбрали крестики-нолики {field_size}x{field_size}. Для победы создайте ряд из {win_row_sizes[field_size]} символов")
+    await callback.message.delete()
+    game.set_game(field_size, win_row_sizes[field_size])
+
+    xo_keyboard = XOKeyboard(size=field_size)
+    kb_builder = InlineKeyboardBuilder()
+    xo_keyboard.keyboard = xo_keyboard.construct_keyboard(xo_keyboard.size)
+    kb_builder.row(*xo_keyboard, width=game.xo_board.size)
+
+    await callback.message.answer(
+        text=f"{LEXICON_RU["xo"][game.turn]["win_higlight_symbol"]}  @{game.players[game.turn]}",
+        reply_markup=kb_builder.as_markup())
 
 
 @router.callback_query(F.data.in_([f"{i}{j}" for i in range(game.xo_board.size) for j in range(game.xo_board.size)]))
@@ -226,7 +243,5 @@ async def process_move(callback: CallbackQuery):
             text=f'''{LEXICON_RU["xo"]["win_msg"]} {LEXICON_RU["xo"][game.turn]["win_higlight_symbol"]} @{game.players[game.turn]}''',
             reply_markup=kb_builder.as_markup())
         xo_keyboard.keyboard = xo_keyboard.construct_keyboard(xo_keyboard.size)
-
-        game.restart_game()
 
     await callback.answer()

@@ -1,3 +1,5 @@
+import re
+
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.state import StatesGroup, State
@@ -5,8 +7,10 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import InlineKeyboardButton, Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from config_data.config import load_config
 from lexicon.lexicon_ru import LEXICON_RU
 
+config = load_config()
 storage = MemoryStorage()
 router = Router()
 
@@ -43,8 +47,15 @@ class XOGame(StatesGroup):
         self.win_row_size = win_row_size
         self.turn = turn
         self.active = active
+        self.players = {'X': '_', 'O': '_'}
 
         self.state = state
+
+    def restart_game(self):
+        self.xo_board = Board(self.xo_board.size)
+        self.turn = 'X'
+        self.active = True
+        self.players = {'X': '_', 'O': '_'}
 
     def switch_turn(self):
         if self.turn == 'X':
@@ -62,6 +73,11 @@ class XOGame(StatesGroup):
                 return win
 
         return win
+
+    def check_epmty_cell(self, row, column, placeholder):
+        is_cell_empty = self.xo_board[row][column] == placeholder
+
+        return is_cell_empty
 
     def check_winner(self):
         board_size = len(self.xo_board)
@@ -139,9 +155,32 @@ async def play_xo(message: Message):
     xo_keyboard.keyboard = xo_keyboard.construct_keyboard(xo_keyboard.size)
     kb_builder.row(*xo_keyboard, width=len(game.xo_board))
 
-    game.active = True
+    BOT_USERNAME: str = config.tg_bot.bot_username
 
-    await message.answer(LEXICON_RU["xo"]["xo_start_msg"], reply_markup=kb_builder.as_markup())
+    checks_1: str = "/playxo (@[A-z]([A-z0-9_]{4,31}))"
+    checks_2: str = "/playxo" + BOT_USERNAME + " (@[A-z]([A-z0-9_]{4,31}))"
+
+    is_valid_command_1: bool = bool(re.fullmatch(checks_1, message.text))
+    is_valid_command_2: bool = bool(re.fullmatch(checks_2, message.text))
+
+    message_content: list[str] = message.text.split()
+    recipient: str = message_content[-1][1:]
+
+    if is_valid_command_1 or is_valid_command_2:
+        game.restart_game()
+        game.players['X'] = message.from_user.username
+        game.players['O'] = recipient
+
+        await message.answer(LEXICON_RU["xo"]["xo_start_msg"])
+        await message.answer(text=f"{LEXICON_RU["xo"][game.turn]["win_higlight_symbol"]}  @{game.players[game.turn]}",
+                             reply_markup=kb_builder.as_markup())
+    else:
+        await message.answer(f'Для начала игры введите команду /playxo @[ник вашего соперника]')
+
+
+@router.callback_query(F.data.in_["3", "5", "10"])
+async def choose_field_size(callback: CallbackQuery):
+    ...
 
 
 @router.callback_query(F.data.in_([f"{i}{j}" for i in range(game.xo_board.size) for j in range(game.xo_board.size)]))
@@ -156,32 +195,38 @@ async def process_move(callback: CallbackQuery):
     row = int(coords[0])
     column = int(coords[1])
 
-    if not win and game.active:
+    if not win:
         kb_builder = InlineKeyboardBuilder()
-        xo_keyboard[keyboard_button_number] = InlineKeyboardButton(text=game.turn, callback_data=coords)
 
-        game.xo_board[row][column] = game.turn
+        cell_is_empty = game.check_epmty_cell(row, column, xo_keyboard.placeholder)
+
+        if cell_is_empty:
+            game.xo_board[row][column] = game.turn
+            xo_keyboard[keyboard_button_number] = InlineKeyboardButton(text=game.turn, callback_data=coords)
 
         kb_builder.row(*xo_keyboard, width=game.xo_board.size)
 
         win = game.check_winner()
 
-        game.switch_turn()
-
-        if not win:
-            await callback.message.edit_text(text=f"Ход {game.turn}", reply_markup=kb_builder.as_markup())
+        if not win and cell_is_empty:
+            game.switch_turn()
+            await callback.message.edit_text(
+                text=f"{LEXICON_RU["xo"][game.turn]["win_higlight_symbol"]}  @{game.players[game.turn]}",
+                reply_markup=kb_builder.as_markup())
+        elif not win and not cell_is_empty:
+            await callback.answer(text="Эта клетка занята!")
+        else:
+            await callback.answer()
 
     if win:
-        game.switch_turn()
+        # TODO: Добавить подсветку выигрышной комбинации
 
         await callback.answer("Игра окончена!")
-        await callback.message.edit_text(text=f"{LEXICON_RU["xo"][game.turn]}",
-                                         reply_markup=kb_builder.as_markup())
-        game.active = False
+        await callback.message.edit_text(
+            text=f'''{LEXICON_RU["xo"]["win_msg"]} {LEXICON_RU["xo"][game.turn]["win_higlight_symbol"]} @{game.players[game.turn]}''',
+            reply_markup=kb_builder.as_markup())
         xo_keyboard.keyboard = xo_keyboard.construct_keyboard(xo_keyboard.size)
 
-        game.xo_board = Board(5)
+        game.restart_game()
 
     await callback.answer()
-
-

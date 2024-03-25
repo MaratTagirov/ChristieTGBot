@@ -10,10 +10,11 @@ from aiogram.types import Message
 from requests import Response
 
 from lexicon.lexicon_ru import LEXICON_RU
-from routers.notes_routers.notes import config
+from config_data.config import load_config
+
 
 router = Router(name=__name__)
-
+config = load_config()
 
 @router.message(Command(commands=["start", "help"]))
 async def start_bot(message: Message) -> None:

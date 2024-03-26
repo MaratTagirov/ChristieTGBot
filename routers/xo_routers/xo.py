@@ -1,8 +1,7 @@
 import re
 
-from aiogram import Router, F, Bot
+from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import InlineKeyboardButton, Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -10,9 +9,7 @@ from config_data.config import load_config
 from lexicon.lexicon_ru import LEXICON_RU
 
 config = load_config()
-storage = MemoryStorage()
 router = Router()
-bot = Bot(config.tg_bot.token)
 
 
 class Board:
@@ -21,10 +18,10 @@ class Board:
         self.size = size
 
     def __len__(self):
-        return len(self.board)
+        return self.size
 
     def __iter__(self):
-        return iter(self.board)
+        yield from self.board
 
     def __getitem__(self, item):
         return self.board[item]
@@ -41,28 +38,24 @@ class Board:
         return _board
 
 
-class XOGame():
-    def __init__(self, board, win_row_size, turn, active=True):
+class XOGame:
+    def __init__(self, board, win_row_size, turn):
         self.xo_board = board
         self.win_row_size = win_row_size
         self.turn = turn
-        self.active = active
         self.players = {'X': '_', 'O': '_'}
 
     def set_game(self, size, win_row_size):
         self.xo_board = Board(size)
         self.win_row_size = win_row_size
         self.turn = 'X'
-        self.active = True
 
     def switch_turn(self):
-        if self.turn == 'X':
-            self.turn = 'O'
-        else:
-            self.turn = 'X'
+        turns = {'X': 'O', 'O': 'X'}
+        self.turn = turns.get(self.turn)
 
     def scan_row(self, _row):
-        win = False
+        win: bool = False
 
         for i in range(len(_row)):
             _slice = _row[i: self.win_row_size + i]
@@ -110,6 +103,7 @@ class XOGame():
         d_indexes_1 = [[] for _ in range(number_of_diagonals)]
         diagonals_2 = [[] for _ in range(number_of_diagonals)]
         d_indexes_2 = [[] for _ in range(number_of_diagonals)]
+
         for i in range(-(board_size - 1), board_size):
             for j in range(board_size):
                 row, col = j, i + j
@@ -177,6 +171,7 @@ xo_keyboard = XOKeyboard(placeholder='_', size=5)
 
 @router.message(Command(commands="playxo"))
 async def play_xo(message: Message):
+
     keyboard = [InlineKeyboardButton(text="3", callback_data="3"),
                 InlineKeyboardButton(text="5", callback_data="5"), ]
 
@@ -199,25 +194,28 @@ async def play_xo(message: Message):
         game.players['X'] = message.from_user.username
         game.players['O'] = recipient
 
-        await message.answer(LEXICON_RU["xo"]["xo_start_msg"])
+        await message.answer(text=LEXICON_RU["xo"]["xo_start_msg"])
         await message.answer(text="Выберите размер поля:", reply_markup=kb_1.as_markup())
 
     else:
-        await message.answer(f'Для начала игры введите команду /playxo @[ник вашего соперника]')
+        await message.answer(text=f'Для начала игры введите команду /playxo @[ник вашего соперника]')
 
 
 @router.callback_query(F.data.in_(["3", "5"]))
 async def set_field_size(callback: CallbackQuery):
-    global xo_keyboard
+
     field_size = int(callback.data)
     win_row_sizes = {3: 3, 5: 4}
+
     await callback.message.edit_text(
         f"Вы выбрали крестики-нолики {field_size}x{field_size}. Для победы создайте ряд из {win_row_sizes[field_size]} символов")
+
     game.set_game(field_size, win_row_sizes[field_size])
 
-    xo_keyboard = XOKeyboard(size=field_size)
+    xo_keyboard.construct_keyboard(field_size)
+
     kb_builder = InlineKeyboardBuilder()
-    xo_keyboard.keyboard = xo_keyboard.construct_keyboard(xo_keyboard.size)
+
     kb_builder.row(*xo_keyboard, width=game.xo_board.size)
 
     await callback.message.answer(
@@ -227,17 +225,18 @@ async def set_field_size(callback: CallbackQuery):
 
 @router.callback_query(F.data.in_([f"{i}{j}" for i in range(game.xo_board.size) for j in range(game.xo_board.size)]))
 async def process_move(callback: CallbackQuery):
-    win_list = game.check_winner()
-    win = win_list[0]
-    coords = callback.data
-    keyboard_button_number = int(coords, base=game.xo_board.size)
-    row = int(coords[0])
-    column = int(coords[1])
+
+    win_list: list[bool, list[str]] = game.check_winner()
+    win: bool = win_list[0]
+    coords: str = callback.data
+    keyboard_button_number: int = int(coords, base=game.xo_board.size)
+    row: int = int(coords[0])
+    column: int = int(coords[1])
 
     if not win:
         kb_builder = InlineKeyboardBuilder()
 
-        cell_is_empty = game.check_epmty_cell(row, column, xo_keyboard.placeholder)
+        cell_is_empty: bool = game.check_epmty_cell(row=row, column=column, placeholder=xo_keyboard.placeholder)
 
         if cell_is_empty:
             game.xo_board[row][column] = game.turn
@@ -245,7 +244,7 @@ async def process_move(callback: CallbackQuery):
 
         kb_builder.row(*xo_keyboard, width=game.xo_board.size)
 
-        win = game.check_winner()[0]
+        win: bool = game.check_winner()[0]
 
         if not win and cell_is_empty:
             game.switch_turn()
@@ -254,13 +253,14 @@ async def process_move(callback: CallbackQuery):
                 reply_markup=kb_builder.as_markup())
         elif not win and not cell_is_empty:
             await callback.answer(text="Эта клетка занята!")
+
         await callback.answer()
 
     if win:
-        win_list = game.check_winner()
+        win_list: list[bool, list[str]] = game.check_winner()
 
-        keys_to_replace = [key for key, button in enumerate(xo_keyboard.keyboard)
-                           if button.text == game.turn and button.callback_data in win_list[1]]
+        keys_to_replace: list[int] = [key for key, button in enumerate(xo_keyboard.keyboard)
+                                      if button.text == game.turn and button.callback_data in win_list[1]]
 
         xo_keyboard.update_keys(LEXICON_RU["xo"][game.turn]["win_highlight_symbol"], keys_to_replace)
 

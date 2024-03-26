@@ -145,7 +145,7 @@ class XOKeyboard:
         self.keyboard = self.construct_keyboard(self.size)
 
     def __iter__(self):
-        return iter(self.keyboard)
+        yield from self.keyboard
 
     def __getitem__(self, item):
         return self.keyboard[item]
@@ -162,6 +162,12 @@ class XOKeyboard:
             for j in range(size):
                 _keyboard.extend([InlineKeyboardButton(text=self.placeholder, callback_data=f"{i}{j}")])
         return _keyboard
+
+    def update_keys(self, symbol, *args):
+        buttons = list(*args)
+
+        for key in buttons:
+            self.keyboard[key].text = symbol
 
 
 game = XOGame(board=Board(5), win_row_size=4, turn="X")
@@ -221,8 +227,6 @@ async def set_field_size(callback: CallbackQuery):
 
 @router.callback_query(F.data.in_([f"{i}{j}" for i in range(game.xo_board.size) for j in range(game.xo_board.size)]))
 async def process_move(callback: CallbackQuery):
-    global xo_keyboard
-
     win_list = game.check_winner()
     win = win_list[0]
     coords = callback.data
@@ -253,19 +257,19 @@ async def process_move(callback: CallbackQuery):
         await callback.answer()
 
     if win:
-        for i, k in enumerate(xo_keyboard):
-            if k.callback_data in win_list[1] and k.text == game.turn:
-                del xo_keyboard.keyboard[i]
-                xo_keyboard.keyboard.insert(i, InlineKeyboardButton(
-                    text=LEXICON_RU["xo"][game.turn]["win_highlight_symbol"], callback_data=callback.data))
+        win_list = game.check_winner()
+
+        keys_to_replace = [key for key, button in enumerate(xo_keyboard.keyboard)
+                           if button.text == game.turn and button.callback_data in win_list[1]]
+
+        xo_keyboard.update_keys(LEXICON_RU["xo"][game.turn]["win_highlight_symbol"], keys_to_replace)
 
         kb_builder = InlineKeyboardBuilder()
 
         kb_builder.row(*xo_keyboard, width=game.xo_board.size)
-        # TODO: Добавить подсветку выигрышной комбинации
+
         await callback.answer()
+
         await callback.message.edit_text(
             text=f'''{LEXICON_RU["xo"]["win_msg"]} {LEXICON_RU["xo"][game.turn]["win_highlight_symbol"]} @{game.players[game.turn]}''',
             reply_markup=kb_builder.as_markup())
-
-        await bot.send_message(text="Привет!", chat_id=callback.chat_instance)

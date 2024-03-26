@@ -4,3 +4,4 @@ database.db
 *.pyc
 *~
 *.swp
+.database/

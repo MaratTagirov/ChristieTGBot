@@ -17,25 +17,25 @@ class Database:
     @staticmethod
     @connect
     def create_db():
-
-        query = '''CREATE TABLE IF NOT EXISTS users(user_id int)'''
-
+        query = '''CREATE TABLE IF NOT EXISTS users(
+PRIMARY KEY user_id int)'''
 
     @staticmethod
     @connect
     def add_user():
 
-        query = ...
+        query = '''CREATE TABLE IF NOT EXISTS ? {}
+FOREIGN KEY'''
 
     @staticmethod
     def get_user_stats():
-        query = ...
+        query = '''FROM users SELECT WHERE '''
 
         return query
 
     @staticmethod
     def get_top_10():
-        query = ...
+        query = '''FROM users SELECT WHERE '''
 
         return query
 

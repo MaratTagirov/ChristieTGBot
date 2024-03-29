@@ -1,15 +1,18 @@
 import re
 
 from aiogram import Router, F
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardButton, Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
+
 from config_data.config import load_config
+from database.database_manager import Database
 from lexicon.lexicon_ru import LEXICON_RU
 
 config = load_config()
 router = Router()
+db = Database()
 
 
 class Board:
@@ -214,7 +217,7 @@ async def set_field_size(callback: CallbackQuery):
     await callback.message.edit_text(
         f"Вы выбрали крестики-нолики {field_size}x{field_size}. Для победы создайте ряд из {win_row_sizes[field_size]} символов")
 
-    game.set_game(field_size, win_row_sizes[field_size], field_size**2)
+    game.set_game(field_size, win_row_sizes[field_size], field_size ** 2)
 
     xo_keyboard.construct_keyboard(field_size)
 
@@ -229,7 +232,6 @@ async def set_field_size(callback: CallbackQuery):
 
 @router.callback_query(F.data.in_([f"{i}{j}" for i in range(game.xo_board.size) for j in range(game.xo_board.size)]))
 async def process_move(callback: CallbackQuery):
-
     win_list: list[bool, list[str]] = game.check_winner()
     win: bool = win_list[0]
 
@@ -238,10 +240,10 @@ async def process_move(callback: CallbackQuery):
     row: int = int(coords[0])
     column: int = int(coords[1])
     current_player = game.players[game.turn]
-    cond = current_player == callback.from_user.username
+    user_is_valid = current_player == callback.from_user.username
 
     if not win:
-        if cond:
+        if user_is_valid:
             kb_builder = InlineKeyboardBuilder()
 
             cell_is_empty: bool = game.check_epmty_cell(row=row, column=column, placeholder=xo_keyboard.placeholder)
@@ -266,8 +268,8 @@ async def process_move(callback: CallbackQuery):
                     try:
                         game.switch_turn()
                         await callback.message.edit_text(
-                                text=f"{LEXICON_RU["xo"][game.turn]["win_highlight_symbol"]}  @{game.players[game.turn]}",
-                                reply_markup=kb_builder.as_markup())
+                            text=f"{LEXICON_RU["xo"][game.turn]["win_highlight_symbol"]}  @{game.players[game.turn]}",
+                            reply_markup=kb_builder.as_markup())
                     except TelegramRetryAfter:
                         ...
 
@@ -297,4 +299,4 @@ async def process_move(callback: CallbackQuery):
                 text=f'''{LEXICON_RU["xo"]["win_msg"]} {LEXICON_RU["xo"][game.turn]["win_highlight_symbol"]} @{game.players[game.turn]}''',
                 reply_markup=kb_builder.as_markup())
         except TelegramBadRequest:
-            pass
+            ...

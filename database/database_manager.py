@@ -1,5 +1,4 @@
 import functools
-import random
 import sqlite3 as sq
 
 from config_data.config import load_config
@@ -17,10 +16,12 @@ class Database:
                 cur = con.cursor()
                 func_call = func(*args)
 
-                if len(func_call) == 2:
+                if len(func_call) >= 2 and isinstance(func_call, tuple):
                     query = func_call[0]
-                    params = func_call[1]
-                    call = cur.execute(query, [params])
+                    params = [func_call[1:]]
+
+                    call = cur.execute(query, *params)
+
                 else:
                     call = cur.execute(func_call)
 
@@ -43,25 +44,28 @@ class Database:
     @staticmethod
     @connect
     def add_user(_user_id):
-        query = '''INSERT INTO users (user_id, win, lose, draw)
+        query = '''INSERT OR IGNORE INTO users (user_id, win, lose, draw)
                    VALUES (?, 0, 0, 0)'''
         user_id = _user_id
 
         return query, user_id
 
     @staticmethod
-    def get_user_stats(_username):
-        username = _username
-        query = '''FROM users SELECT WHERE username = ?'''
+    def get_user_stats(_user_id):
+        with sq.connect(config.database.database_name) as con:
+            cur = con.cursor()
+            query = '''SELECT win, lose, draw FROM users WHERE user_id = ?'''
+            cur.execute(query, [_user_id])
+            res = cur.fetchall()
+            cur.close()
 
-        return query, username
+        return res
 
     @staticmethod
-    def get_top_10():
-        query = '''FROM users SELECT WHERE '''
+    @connect
+    def update_user_stats(w, l, d, _user_id):
+        query = '''UPDATE users
+                   SET win = win + ?, lose = lose  + ?, draw = draw + ?
+                   WHERE user_id = ?'''
 
-        return query
-
-
-db = Database()
-db.create_db()
+        return query,  w, l, d, _user_id

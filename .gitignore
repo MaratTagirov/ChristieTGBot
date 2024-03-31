@@ -2,4 +2,4 @@ database.db
 .idea/
 .env
 *.pyc
-*__pycache__*
+*__pycache__*/

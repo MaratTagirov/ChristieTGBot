@@ -141,6 +141,10 @@ class XOGame:
         return win, win_row
 
 
+class BigXOGame(XOGame):
+    ...
+
+
 class XOKeyboard:
     def __init__(self, size, placeholder):
         self.placeholder = placeholder
@@ -175,7 +179,7 @@ class XOKeyboard:
 
 
 game = XOGame(board=Board(5), win_row_size=4)
-
+big_game = BigXOGame(board=3, win_row_size=3)
 xo_keyboard = XOKeyboard(size=5, placeholder='_')
 
 

@@ -15,6 +15,7 @@ router = Router()
 db = Database()
 db.create_db()
 
+
 class Board:
     def __init__(self, size):
         self.board = self.generate_board(size)
@@ -37,7 +38,7 @@ class Board:
 
     @staticmethod
     def generate_board(_size=3):
-        _board = [['_'] * _size for _ in range(_size)]
+        _board: list[list[str]] = [['_'] * _size for _ in range(_size)]
         return _board
 
 
@@ -56,7 +57,7 @@ class XOGame:
         self.turns_number = turns_number
 
     def switch_turn(self):
-        turns = {'X': 'O', 'O': 'X'}
+        turns: dict[str, str] = {'X': 'O', 'O': 'X'}
         self.turn = turns.get(self.turn)
 
     def scan_row(self, _row):
@@ -71,17 +72,17 @@ class XOGame:
         return win
 
     def check_epmty_cell(self, row, column, placeholder):
-        is_cell_empty = self.xo_board[row][column] == placeholder
+        is_cell_empty: bool = self.xo_board[row][column] == placeholder
 
         return is_cell_empty
 
     def check_winner(self):
-        board_size = len(self.xo_board)
-        number_of_diagonals = board_size * 2 - 1
+        board_size: int = len(self.xo_board)
+        number_of_diagonals: int = board_size * 2 - 1
 
-        win = False
-        win_row = []
-        flag = True
+        win: bool = False
+        win_row: list[str] = []
+        flag: bool = True
 
         diagonals_1 = [[] for _ in range(number_of_diagonals)]
         d_indexes_1 = [[] for _ in range(number_of_diagonals)]
@@ -110,7 +111,6 @@ class XOGame:
 
             if win:
                 win_row = vert_indexes
-                flag = False
                 break
 
         for i in range(-(board_size - 1), board_size):
@@ -139,10 +139,6 @@ class XOGame:
                 break
 
         return win, win_row
-
-
-class BigXOGame(XOGame):
-    ...
 
 
 class XOKeyboard:
@@ -179,7 +175,6 @@ class XOKeyboard:
 
 
 game = XOGame(board=Board(5), win_row_size=4)
-big_game = BigXOGame(board=3, win_row_size=3)
 xo_keyboard = XOKeyboard(size=5, placeholder='_')
 
 
@@ -207,16 +202,16 @@ async def play_xo(message: Message):
         game.players['X']["username"] = message.from_user.username
         game.players['O']["username"] = recipient
 
-        await message.answer(text=LEXICON_RU["xo"]["xo_start_msg"])
+        await message.answer(text=LEXICON_RU["xo_start_msg"])
         await message.answer(text="Выберите размер поля:", reply_markup=kb_1.as_markup())
 
     else:
-        await message.answer(text=f'Для начала игры введите команду /playxo @[ник вашего соперника]')
+        await message.answer(text=LEXICON_RU["game_start_hint"])
 
 
 @router.message(Command(commands="stats"))
 async def get_stats(message: Message):
-    user_id = message.from_user.id
+    user_id: int = message.from_user.id
     res = [*db.get_user_stats(user_id)[0]]
     answer = f"Статистика игрока: {message.from_user.username}\nПобеды: {res[0]}\nПоражения: {res[1]}"
     await message.answer(answer)
@@ -225,7 +220,7 @@ async def get_stats(message: Message):
 @router.callback_query(F.data.in_(["3", "5"]))
 async def set_the_xo_game(callback: CallbackQuery):
     field_size = int(callback.data)
-    win_row_sizes = {3: 3, 5: 4}
+    win_row_sizes: dict[int, int] = {3: 3, 5: 4}
 
     await callback.message.edit_text(
         f'''Вы выбрали крестики-нолики {field_size}x{field_size}.
@@ -240,7 +235,7 @@ async def set_the_xo_game(callback: CallbackQuery):
     kb_builder.row(*xo_keyboard, width=game.xo_board.size)
 
     await callback.message.answer(
-        text=f"{LEXICON_RU["xo"][game.turn]["win_highlight_symbol"]}  @{game.players[game.turn]["username"]}",
+        text=f"{LEXICON_RU[game.turn]["win_highlight_symbol"]}  @{game.players[game.turn]["username"]}",
         reply_markup=kb_builder.as_markup())
 
 
@@ -280,27 +275,27 @@ async def process_move(callback: CallbackQuery):
 
                 if draw:
                     await callback.message.edit_text(
-                        text=f"⏸ Ничья!",
+                        text=LEXICON_RU["draw"],
                         reply_markup=kb_builder.as_markup())
                 else:
                     try:
                         game.switch_turn()
                         await callback.message.edit_text(
-                            text=f"{LEXICON_RU["xo"][game.turn]["win_highlight_symbol"]}  @{game.players[game.turn]["username"]}",
+                            text=f"{LEXICON_RU[game.turn]["win_highlight_symbol"]}  @{game.players[game.turn]["username"]}",
                             reply_markup=kb_builder.as_markup())
                     except TelegramRetryAfter:
                         ...
 
             elif not win and not cell_is_empty:
-                await callback.answer(text="Эта клетка занята!")
+                await callback.answer(text=LEXICON_RU["occupied_cell_hint"])
 
                 await callback.answer()
         else:
-            await callback.answer(text="Сейчас не ваш ход")
+            await callback.answer(text=LEXICON_RU["forbidden_move_hint"])
 
     if win:
-        winner = [1, 0, 0, game.players[game.turn]["id"]]
-        loser = [0, 1, 0, game.players['O' if game.turn == 'X' else 'X']["id"]]
+        winner: list[...] = [1, 0, 0, game.players[game.turn]["id"]]
+        loser: list[...] = [0, 1, 0, game.players['O' if game.turn == 'X' else 'X']["id"]]
         db.update_user_stats(*winner)
         db.update_user_stats(*loser)
 
@@ -309,7 +304,7 @@ async def process_move(callback: CallbackQuery):
         keys_to_replace: list[int] = [key for key, button in enumerate(xo_keyboard.keyboard)
                                       if button.text == game.turn and button.callback_data in win_list[1]]
 
-        xo_keyboard.update_keys(LEXICON_RU["xo"][game.turn]["win_highlight_symbol"], keys_to_replace)
+        xo_keyboard.update_keys(LEXICON_RU[game.turn]["win_highlight_symbol"], keys_to_replace)
 
         kb_builder = InlineKeyboardBuilder()
 
@@ -319,7 +314,7 @@ async def process_move(callback: CallbackQuery):
 
         try:
             await callback.message.edit_text(
-                text=f'''{LEXICON_RU["xo"]["win_msg"]} {LEXICON_RU["xo"][game.turn]["win_highlight_symbol"]} @{game.players[game.turn]["username"]}''',
+                text=f'''{LEXICON_RU["win_msg"]} {LEXICON_RU[game.turn]["win_highlight_symbol"]} @{game.players[game.turn]["username"]}''',
                 reply_markup=kb_builder.as_markup())
         except TelegramBadRequest:
             ...
